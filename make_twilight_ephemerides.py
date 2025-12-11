@@ -88,8 +88,8 @@ end_datetimes = [end_date + timedelta(days=x) for x in range(numdays)]
 
 # Make pandas dataframe to catch results
 
-columns = ['Date', 'sunrise_UTC', 'sunrise_az', 'sunrise_el', 'sunrise_ra', 'sunrise_dec', 'sunrise_sidereal', \
-            'sunset_UTC', 'sunset_az', 'sunset_el', 'sunset_ra', 'sunset_dec', 'sunset_sidereal']
+columns = ['Date', 'sunset_UTC', 'sunset_az', 'sunset_el', 'sunset_ra', 'sunset_dec', 'sunset_sidereal', \
+           'sunrise_UTC', 'sunrise_az', 'sunrise_el', 'sunrise_ra', 'sunrise_dec', 'sunrise_sidereal']
 
 df = pd.DataFrame(columns=columns, index=np.arange(numdays))
 

@@ -13,7 +13,7 @@ a lookup table for another observatory, change the 'location' input of the JPL H
 '''
 
 #################################################################################
-year = 2025
+year = 2026
 savepath = '/Users/isabelkain/Desktop/Twilight_/twilight-observing-tool'
 
 print( 'Querying JPL Horizons to build Keck II solar ephemeris lookup table.' )
@@ -52,7 +52,7 @@ def query_JPL_horizons(start, end):
 
     
     # Extract sunrise params
-    sunrise_time = result['datetime_str'][-1] # datetime string, e.g. '2025-Jan-01 04:04'
+    sunrise_time = result['datetime_str'][-1] # datetime string, e.g. '2025-Jan-01 16:46'
     sunrise_az = result['AZ'][-1] # deg
     sunrise_el = result['EL'][-1] # deg
     sunrise_ra = result['RA_app'][-1] # deg

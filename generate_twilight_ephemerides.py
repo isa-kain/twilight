@@ -5,24 +5,13 @@ from astroquery.jplhorizons import Horizons
 import calendar
 from datetime import datetime
 from datetime import timedelta
+import sys
 
 '''
 This script generates a lookup table .csv of twilight-relevant solar ephemerides for Keck II. It takes ~4 minutes to run. 
 To generate a lookup table for a give year, change the value of the 'year' parameter on Line 16. If you want to generate
 a lookup table for another observatory, change the 'location' input of the JPL Horizons query on Line 36.
 '''
-
-#################################################################################
-year = 2026
-savepath = '/Users/isabelkain/Desktop/Twilight_/twilight-observing-tool'
-
-print( 'Querying JPL Horizons to build Keck II solar ephemeris lookup table.' )
-print( 'Ephemeris year: ' + str(year) )
-print( 'File location:  ' + savepath )
-
-# If you're having problems (or need to re-query results), uncomment this line and run the script again:
-# Horizons.clear_cache()
-#################################################################################
 
 def query_JPL_horizons(start, end):
     '''
@@ -68,49 +57,65 @@ def query_JPL_horizons(start, end):
 #################################################################################
 #################################################################################
 
+if __name__ == "__main__":
 
-# Set range of dates to query
+    # Define path where ephemeris table will be saved
+    savepath = '/Users/isabelkain/Desktop/Twilight_/twilight-observing-tool/ephemeris-tables'
 
-start_time = '03:00:00' # start search time UTC (evening, 5pm HT)
-end_time = '18:00:00' # end search time UTC (morning, 8am HT)
+    # Define calendar year for which ephemeris table is being generated
+    # year = 2026
+    year = int(sys.argv[1])
 
-numdays = 365 + calendar.isleap(year) # year must be int
+    print( 'Querying JPL Horizons to build Keck II solar ephemeris lookup table.' )
+    print( 'Ephemeris year: ' + str(year) )
+    print( 'File location:  ' + savepath )
 
-
-# Make lists of datetime inputs
-
-start_date = datetime.strptime(f'{year}-01-01 {start_time}', '%Y-%m-%d %H:%M:%S')
-start_datetimes = [start_date + timedelta(days=x) for x in range(numdays)]
-
-end_date = datetime.strptime(f'{year}-01-01 {end_time}', '%Y-%m-%d %H:%M:%S')
-end_datetimes = [end_date + timedelta(days=x) for x in range(numdays)]
-
-
-# Make pandas dataframe to catch results
-
-columns = ['Date', 'sunset_UTC', 'sunset_az', 'sunset_el', 'sunset_ra', 'sunset_dec', 'sunset_sidereal', \
-           'sunrise_UTC', 'sunrise_az', 'sunrise_el', 'sunrise_ra', 'sunrise_dec', 'sunrise_sidereal']
-
-df = pd.DataFrame(columns=columns, index=np.arange(numdays))
+    # If you're having problems (or need to re-query results), uncomment this line and run the script again:
+    # Horizons.clear_cache()
 
 
-# Iterate through all 365 days
+    # Set range of dates to query
 
-assert len(start_datetimes)==len(end_datetimes)
+    start_time = '03:00:00' # start search time UTC (evening, 5pm HT)
+    end_time = '18:00:00' # end search time UTC (morning, 8am HT)
 
-for i in tqdm(range(len(start_datetimes))):
-    
-    start = start_datetimes[i]
-    end = end_datetimes[i]
-    
-    results = query_JPL_horizons(start, end) # type(row)=tuple
-    
-    # Save new row to DataFrame
-    newrow = dict(zip(columns, results))
-    df.loc[i] = newrow
-    
-    
-# Save lookup table
+    numdays = 365 + calendar.isleap(year) # year must be int
 
-df.to_csv(f'{savepath}/twilight_ephemerides_keckII_{year}.csv', index=False)
+
+    # Make lists of datetime inputs
+
+    start_date = datetime.strptime(f'{year}-01-01 {start_time}', '%Y-%m-%d %H:%M:%S')
+    start_datetimes = [start_date + timedelta(days=x) for x in range(numdays)]
+
+    end_date = datetime.strptime(f'{year}-01-01 {end_time}', '%Y-%m-%d %H:%M:%S')
+    end_datetimes = [end_date + timedelta(days=x) for x in range(numdays)]
+
+
+    # Make pandas dataframe to catch results
+
+    columns = ['Date', 'sunset_UTC', 'sunset_az', 'sunset_el', 'sunset_ra', 'sunset_dec', 'sunset_sidereal', \
+               'sunrise_UTC', 'sunrise_az', 'sunrise_el', 'sunrise_ra', 'sunrise_dec', 'sunrise_sidereal']
+
+    df = pd.DataFrame(columns=columns, index=np.arange(numdays))
+
+
+    # Iterate through all 365 days
+
+    assert len(start_datetimes)==len(end_datetimes)
+
+    for i in tqdm(range(len(start_datetimes))):
+        
+        start = start_datetimes[i]
+        end = end_datetimes[i]
+        
+        results = query_JPL_horizons(start, end) # type(row)=tuple
+        
+        # Save new row to DataFrame
+        newrow = dict(zip(columns, results))
+        df.loc[i] = newrow
+        
+        
+    # Save lookup table
+
+    df.to_csv(f'{savepath}/twilight_ephemerides_keckII_{year}.csv', index=False)
 

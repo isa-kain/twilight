@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+import sys, os
 # from astropy.io import fits
 from datetime import date, datetime, timedelta, timezone
 # from astroquery.jplhorizons import Horizons
@@ -19,7 +20,7 @@ from utils import *
 # %load_ext autoreload
 # %autoreload 2
 
-ephempath = '/Users/isabelkain/Desktop/Twilight_/twilight-observing-tool'
+ephempath = '/Users/isabelkain/Desktop/Twilight_/twilight-observing-tool/ephemeris-tables/'
 toipath = '/Users/isabelkain/Desktop/Twilight_/twilight-observing-tool'
 
 
@@ -208,8 +209,8 @@ def grab_ss_trace(objname, site, sunset_UTC, sunrise_UTC):
     
     # Generate list of times throughout night to check where SS object is in the sky
     sample_times = Time( pd.date_range(start=sunset_UTC, end=sunrise_UTC, periods=30).to_numpy() )
-    obj_az = np.zeros(len(sample_times))
-    obj_el = np.zeros(len(sample_times)) 
+    targ_az = np.zeros(len(sample_times))
+    targ_el = np.zeros(len(sample_times)) 
 
 
     # Grab object az,el location at each timestamp
@@ -218,21 +219,21 @@ def grab_ss_trace(objname, site, sunset_UTC, sunrise_UTC):
         obj_coord = get_body(objname, time=time, location=site) 
         obj_coord_altaz = obj_coord.transform_to(AltAz(obstime=time, location=keck))
 
-        obj_az[i] = obj_coord_altaz.az.value
-        obj_el[i] = obj_coord_altaz.alt.value
+        targ_az[i] = obj_coord_altaz.az.value
+        targ_el[i] = obj_coord_altaz.alt.value
         
         # If object not effectively visible with Keck II, mask values with NaNs
-        if not keckII_pointing_limits(obj_az[i], obj_el[i]):
-            obj_el[i] = np.nan
+        if not keckII_pointing_limits(targ_az[i], targ_el[i]):
+            targ_el[i] = np.nan
 
 #     # Mask timestamps with NaNs where el < 18deg
-#     obj_el[obj_el < 18.] = np.nan
+#     targ_el[targ_el < 18.] = np.nan
     
     # Return location
-    return obj_az, obj_el, sample_times
+    return targ_az, targ_el, sample_times
 
 
-def make_azel_plot(sunset_UTC, sunset_az, sunrise_UTC, sunrise_az, obj_az, obj_el, trace_times, obj_label='Target'):
+def make_azel_plot(sunset_UTC, sunset_az, sunrise_UTC, sunrise_az, targ_az, targ_el, trace_times, obj_label='Target'):
     
     # Initialize plot
     fig, ax = plt.subplots(1, 1, figsize=(5, 7), subplot_kw={'projection': 'polar'}, layout='constrained')
@@ -281,21 +282,21 @@ def make_azel_plot(sunset_UTC, sunset_az, sunrise_UTC, sunrise_az, obj_az, obj_e
                 label=f'Sunrise limits ({az_lolim:0.0f} < az < {az_uplim:0.0f})')
     
     # Find timestamps of when object rises & sets
-    start_vis = np.where(np.isfinite(obj_el))[0][0] # index where object rises/observing window starts
-    end_vis = np.where(np.isfinite(obj_el))[0][-1] # index where object sets/observing window ends
+    start_vis = np.where(np.isfinite(targ_el))[0][0] # index where object rises/observing window starts
+    end_vis = np.where(np.isfinite(targ_el))[0][-1] # index where object sets/observing window ends
     print(start_vis, end_vis)
     
     # Plot trace of object across sky
-    plt.plot(np.deg2rad(obj_az), obj_el, label=obj_label)
-    plt.scatter(np.deg2rad(obj_az[start_vis]), obj_el[start_vis], marker='o', fc=None, ec='C0')
-    plt.scatter(np.deg2rad(obj_az[end_vis]), obj_el[end_vis], marker='o', color='C0')
+    plt.plot(np.deg2rad(targ_az), targ_el, label=obj_label)
+    plt.scatter(np.deg2rad(targ_az[start_vis]), targ_el[start_vis], marker='o', fc=None, ec='C0')
+    plt.scatter(np.deg2rad(targ_az[end_vis]), targ_el[end_vis], marker='o', color='C0')
     
     # Annotate rise, set times of object
     t1 = trace_times[start_vis].strftime('%H:%M')
     t2 = trace_times[end_vis].strftime('%H:%M')
     
-    ax.annotate(t1, (np.deg2rad(nep_az[start_vis])*1.02, nep_el[start_vis]*1.02), xycoords='data')
-    ax.annotate(t2, (np.deg2rad(nep_az[end_vis])*1.02, nep_el[end_vis]*1.02), xycoords='data')
+    ax.annotate(t1, (np.deg2rad(targ_az[start_vis])*1.02, targ_el[start_vis]*1.02), xycoords='data')
+    ax.annotate(t2, (np.deg2rad(targ_az[end_vis])*1.02, targ_el[end_vis]*1.02), xycoords='data')
 
     # Set legend
     datestr = sunrise_UTC.split(' ')[0]
@@ -328,8 +329,7 @@ if __name__ == "__main__":
 	try:
 		target_name = str(sys.argv[1])
 	except:
-		print('Specify which Solar System target you would like to generate an az-el pointing limits plot for.')
-		print('Options: Neptune, Uranus, Titan, etc (case insensitive).')
+		raise ValueError('Specify which Solar System target you would like to generate an az-el pointing limits plot for. Options: Neptune, Uranus, Titan, etc (case insensitive).')
 
 
 	# Set observatory location
@@ -338,14 +338,14 @@ if __name__ == "__main__":
 
 	# Set date of observation being planned. If no date specified, the current date is assumed.
 	try:
-		datestr = str(sys.argv[2]) 
-        date, year = parse_datestring(datestr)
-        datestr = date.strftime('%Y-%m-%d') # overwrite datestr format for convenience
-        print('User-entered observation date:', datestr)
+		datestr = str(sys.argv[2])
+		date, year = parse_datestring(datestr)
+		datestr = date.strftime('%Y-%m-%d') # overwrite datestr format for convenience
+		print('User-entered observation date:', datestr)
 	except:
-        date = datetime.now()
-        year = date.strftime('%Y')
-        datestr = date.strftime('%Y-%m-%d')
+		date = datetime.now()
+		year = date.strftime('%Y')
+		datestr = date.strftime('%Y-%m-%d')
 		print('No observation date specified, taking today\'s date:', datestr)
 
 

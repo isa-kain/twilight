@@ -14,8 +14,86 @@ from astropy.coordinates import AltAz, EarthLocation, SkyCoord, get_body, get_su
 from astropy.time import Time
 
 
-ephempath = '/Users/isabelkain/Desktop/Twilight_/twilight-observing-tool'
+ephempath = '/Users/isabelkain/Desktop/Twilight_/twilight-observing-tool/ephemeris-tables'
 toipath = '/Users/isabelkain/Desktop/Twilight_/twilight-observing-tool'
+
+
+def parse_datestring(datestr):
+    '''
+    Ingests string of unknown datetime format and checks it against a number of datetime formats:
+    
+    ** Year, month and day specified: **
+    YYY-MM-DD > %Y-%m-%d
+    YY-MM-DD > %y-%m-%d
+    MM-DD-YYYY > %m-%d-%Y
+    MM-DD-YY > %m-%d-%y
+    mnth DD YYYY > %b %d %Y
+    mnth DD YY > %b %d %y
+    Month DD YYYY > %B %d %Y
+    Month DD YY > %B %d %y
+    
+    ** Month and day only specified: **
+    MM-DD > %m-%d
+    mnth DD > %b %d
+    month DD > %B %d
+    
+    ** User specifies current day: **
+    Today
+    Tonight
+    Now
+    
+    Returns:
+    date :: datetime object
+    year :: int, e.g. 2026
+    '''
+    
+#     print(':: DEBUG ::', datestr, type(datestr), datestr==None)
+    
+    # Write out datetime formats to check user input against
+    list_of_dtformats_withyear = ['%Y-%m-%d', '%y-%m-%d', '%m-%d-%Y', '%m-%d-%y', '%b %d %Y', '%b %d %y', '%B %d %Y', '%B %d %y']
+    list_of_dtformats_woutyear = ['%m-%d', '%b %d', '%B %d']
+    list_of_dtformats_today = ['today', 'tonight', 'now']
+    
+    
+    # Create datetime object for current day
+    now = datetime.now()
+    
+    # If datestr not specified, take today's date
+    if datestr==None:
+        date = now # contains current hour, minute, second, ect – shouldn't matter
+        year = now.strftime('%Y')
+        return date, year
+    
+    # Check entered datestring against strptime formats (year user-specified)
+    for fmt in list_of_dtformats_withyear:    
+        try:
+            date = datetime.strptime(datestr, fmt)
+            year = date.strftime('%Y') 
+            print('User-entered observation date:', date)
+        except ValueError:
+            pass
+
+        
+    # Check entered datestring against strptime formats (year NOT user-specified)
+    for fmt in list_of_dtformats_woutyear:    
+        try:
+            date = datetime.strptime(datestr, fmt)
+            year = now.strftime('%Y') 
+            date = date.replace(year=int(year))
+            print('User-entered observation date:', date)
+        except ValueError:
+            pass
+    
+    # Maybe your user is overeager and specifies that they TODAY
+    if any( fmt.casefold() in datestr.casefold() for fmt in list_of_dtformats_today ):
+        date = now # contains current hour, minute, second, ect – shouldn't matter
+        year = now.strftime('%Y')
+    
+    # If no formats matched, return ValueError; else, return datetime object and year string
+    try:
+        return date, year
+    except NameError:
+        raise ValueError('User-entered date format not recognized. Try again!')
 
 
 def read_solar_ephemeris(datestr=None):
@@ -25,16 +103,10 @@ def read_solar_ephemeris(datestr=None):
     from this date; otherwise, the code pulls ephemerides from today.
     '''
     
-    # Parse date if given by user
-    if datestr is not None:
-        date = datetime.strptime(datestr, '%Y-%m-%d')
-        year = date.strftime('%Y')
-    
-    # Otherwise, use today's date
-    else:
-        now = datetime.now()
-        date = now.strftime('%Y-%m-%d')
-        year = now.strftime('%Y')
+    # Parse date if given by user; otherwise take today's date
+    dt, year = parse_datestring(datestr)
+    date = dt.strftime('%Y-%m-%d')
+#     print(':: DEBUG ::', date, type(date), year, type(year))
         
         
     # Read in solar ephemeris table from matching year
@@ -102,30 +174,102 @@ def keckII_pointing_limits(az, el):
             return False
         
         
-def twilight_pointing_limits(az, sun_az, az_sep=45.):
+def twilight_pointing_limits(obj_az, sun_az, az_sep=45.):
     '''
-    Check if telescope az is >=45˚ from the sun. (az, sun_az units in degrees)
-    Since telescope shutters are vertical, el angle does NOT matter.
+    Check if object az is >=45˚ from the sun. (az, sun_az units in degrees)
     '''
 
     # Find difference between sun, telescope az angles
-    if az > 180.:
-        az = az - 360.
-
-    if sun_az > 180.:
-        sun_az = sun_az - 360.
-    
-    az_diff = np.abs(az-sun_az)
-    print(az_diff)
+    az_diff = np.abs(obj_az-sun_az) % 360.
+#     print(':: DEBUG :: ', az_diff)
+#     print(':: DEBUG :: twilight_pointing_limits() sun_az / obj_az / az_diff:', sun_az, obj_az, az_diff)
                 
-    
-    # Check if input az obeys twilight pointing constraints
-    if az_diff < az_sep: 
+    # Is object az > minimum separation angle from the rising sun?
+    if az_diff <= az_sep: 
         return False
     else: 
         return True
     
+    
+    
 
+def is_target_up_morn_twi(sunrise_dt, sunrise_az, obj_coord, site):
+    '''
+    sunrise_dt :: datetime object, datetime of sunrise at site
+    sunrise_az :: az angle of sunrise (deg)
+    obj_coord ::  SkyCoord (ICRS) of target object
+    site :: EarthLocation object of observing site
+    '''
+
+    # Sample target visibility at 5 10-minute increments during hour before sunrise 
+    # (twilight_samptimes increases in time, e.g. sunrise is last position in list)
+    twilight_samptimes = [sunrise_dt - timedelta(minutes=10*x) for x in range(4,-1,-1)]
+#     print(':: DEBUG :: ', twilight_samptimes)
+
+
+    # Check if target is within Keck II pointing limits at each sample time
+    sampled_visibility = np.full(len(twilight_samptimes), False)
+
+    for j, time in enumerate(twilight_samptimes):
+
+        # What is az/el location of TOI at given time? 
+        obj_coord_azel = obj_coord.transform_to(AltAz(obstime=Time(time), location=site))
+        obj_az = obj_coord_azel.az.value
+        obj_el = obj_coord_azel.alt.value
+#         print(':: DEBUG :: is_target_up_morn_twi() object azel:', obj_az, obj_el)
+
+        # Is it within telescope pointing constraints?
+        kvis = keckII_pointing_limits(obj_az, obj_el) # returns True/False
+        
+        # Is it within twilight pointing constraints?
+        tvis = twilight_pointing_limits(obj_az, sunrise_az, az_sep=45.)
+        
+        # At this sampled time, is it within both Keck & twilight constraints?
+        sampled_visibility[j] = kvis and tvis
+
+
+    # Is object up for at least 3 out of 5 10-min sampled periods (i.e. up for >60% of the 40 mins before sunrise)
+    # AND is the object up at sunrise (to prevent looking at a target and having it set early)
+#     is_up = (np.sum(sampled_visibility) >= 3.) and (sampled_visibility[-1]==True) # True/False
+    is_up = (np.sum(sampled_visibility) >= 3.)  # True/False -- FIXME is this the right litmus?
+    
+#     if np.sum(sampled_visibility)==0:
+#         print(':: DEBUG :: this TOI is not up at all:', obj_coord, np.sum(sampled_visibility), np.shape(sampled_visibility))
+    
+    return is_up
+
+
+def multiprocess_toi_visibility(toi_coord, sunrise_list, sunaz_list, site): 
+    '''
+    [thing it does]
+    
+    Inputs:
+    toi_coord :: SkyCoord object specifying TOI (ra, dec)
+    sunrise_list :: 
+    site :: EarthLocation object specifying observing site.
+    
+    Returns:
+    vis_matrix_row :: (1 x N_TOIs) boolean array. If True, target is visible during morning twilight.
+    '''
+    
+    vis_matrix_row = np.full(len(sunrise_list), False)
+    
+    for j in range(len(sunrise_list)): # for each day in given year
+        
+        sunrise_dt = sunrise_list[j]
+        sunrise_az = sunaz_list[j]
+        is_up = is_target_up_morn_twi(sunrise_dt, sunrise_az, toi_coord, site=site) # sunrise_dt, sunrise_az, obj_coord, site
+
+        vis_matrix_row[j] = is_up
+        
+    return vis_matrix_row
+
+    
+
+    
+###################################################################
+## Solar System stuff
+###################################################################
 
     
 def query_JPL_horizons(start, end):
@@ -201,38 +345,6 @@ def grab_ss_trace(objname, site, sunset_UTC, sunrise_UTC):
     
     # Return location
     return obj_az, obj_el, sample_times
-
-
-
-def is_target_up_morn_twi(sunrise_dt, obj_coord, site):
-    '''
-    sunrise_dt :: datetime object, datetime of sunrise at site
-    obj_coord ::  SkyCoord (ICRS) of target object
-    site :: EarthLocation object of observing site
-    '''
-
-    # Sample target visibility at 15 minute increments during hour before sunrise
-    twilight_samptimes = [sunrise_dt - timedelta(minutes=15*x) for x in range(0,5)]
-
-
-    # Check if target is within Keck II pointing limits at each sample time
-    sampled_visibility = np.full(len(twilight_samptimes), False)
-
-    for j, time in enumerate(twilight_samptimes):
-
-        # What is az/el location of TOI at given time? 
-        obj_coord_azel = obj_coord.transform_to(AltAz(obstime=Time(time), location=site))
-        obj_az = obj_coord_azel.az.value
-        obj_el = obj_coord_azel.alt.value
-
-        # Is it within telescope pointing constraints?
-        vis = keckII_pointing_limits(obj_az, obj_el) # returns True/False
-        sampled_visibility[j] = vis
-
-    # is object up for at least 3 of the 5 sampled times?
-    is_up = (np.sum(sampled_visibility) >= 3.) # True/False -- FIXME is this the right litmus?
-    
-    return is_up
 
 
 
@@ -344,15 +456,7 @@ def make_azel_plot(sunset_UTC, sunset_az, sunrise_UTC, sunrise_az, obj_az, obj_e
 #     return vis_matrix_row
 
 
-def multiprocess_toi_visibility(toi_coord, sunrise_list, site):
-    
-    vis_matrix_row = np.full(len(sunrise_list), False)
-    
-    for j in range(len(sunrise_list)): # for each day in given year
-        
-        sunrise_dt = sunrise_list[j]
-        is_up = is_target_up_morn_twi(sunrise_dt, toi_coord, site=site)
 
-        vis_matrix_row[j] = is_up
-        
-    return vis_matrix_row
+
+
+

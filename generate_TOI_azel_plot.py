@@ -49,7 +49,19 @@ if __name__ == "__main__":
 
 
 	# For now, hardcode TOI target name -- later, replace with user input FIXME
-	target_name = 'TOI 103.01'
+	target_name = 'TOI 194.01'
+
+	# Set date of observation being planned. If no date specified, the current date is assumed.
+	try:
+		datestr = str(sys.argv[1])
+		date, year = parse_datestring(datestr)
+		datestr = date.strftime('%Y-%m-%d') # overwrite datestr format for convenience
+		print('User-entered observation date:', datestr)
+	except:
+		date = datetime.now()
+		year = date.strftime('%Y')
+		datestr = date.strftime('%Y-%m-%d')
+		print('No observation date specified, taking today\'s date:', datestr)
 
 	# Set observatory location
 	keck = EarthLocation.of_site('Keck')

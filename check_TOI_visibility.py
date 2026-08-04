@@ -36,6 +36,7 @@ if __name__ == '__main__':
     # Isolate unique TOI identifiers
     unique_TOIs = toi_list['TOI'].unique()
     print(f'{len(unique_TOIs)} unique TOIs.')
+    np.save(f'{toipath}/vis_matrix_TOIs_{fname}.npy', unique_TOIs)
 
     # Set up empty matrix to catch boolean visibility results
     vis_matrix = np.full((len(unique_TOIs), len(ephem)), False)

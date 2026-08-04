@@ -18,7 +18,7 @@ ephempath = '/Users/isabelkain/Desktop/Twilight_/twilight-observing-tool/ephemer
 toipath = '/Users/isabelkain/Desktop/Twilight_/twilight-observing-tool'
 
 
-def parse_datestring(datestr):
+def parse_datestring(datestr=None):
     '''
     Ingests string of unknown datetime format and checks it against a number of datetime formats:
     
@@ -29,8 +29,15 @@ def parse_datestring(datestr):
     MM-DD-YY > %m-%d-%y
     mnth DD YYYY > %b %d %Y
     mnth DD YY > %b %d %y
+    mnth-DD-YYYY > %b-%d-%Y
+    mnth-DD-YY > %b-%d-%y
     Month DD YYYY > %B %d %Y
     Month DD YY > %B %d %y
+    YYYY-mnth-DD > %Y-%b-%d
+    YYYY mnth DD > %Y %b %d
+    YY-mnth-DD > %y-%b-%d
+    YY mnth DD > %y %b %d
+    
     
     ** Month and day only specified: **
     MM-DD > %m-%d
@@ -50,7 +57,10 @@ def parse_datestring(datestr):
 #     print(':: DEBUG ::', datestr, type(datestr), datestr==None)
     
     # Write out datetime formats to check user input against
-    list_of_dtformats_withyear = ['%Y-%m-%d', '%y-%m-%d', '%m-%d-%Y', '%m-%d-%y', '%b %d %Y', '%b %d %y', '%B %d %Y', '%B %d %y']
+    list_of_dtformats_withyear = ['%Y-%m-%d', '%y-%m-%d', '%m-%d-%Y', '%m-%d-%y', 
+                                  '%b %d %Y', '%b %d %y', '%b-%d-%Y', '%b-%d-%y',
+                                  '%B %d %Y', '%B %d %y', '%Y-%b-%d', '%Y %b %d', 
+                                  '%y-%b-%d', '%y %b %d']
     list_of_dtformats_woutyear = ['%m-%d', '%b %d', '%B %d']
     list_of_dtformats_today = ['today', 'tonight', 'now']
     
@@ -174,9 +184,9 @@ def keckII_pointing_limits(az, el):
             return False
         
         
-def twilight_pointing_limits(obj_az, sun_az, az_sep=45.):
+def twilight_pointing_limits(obj_az, sun_az, az_sep=90.):
     '''
-    Check if object az is >=45˚ from the sun. (az, sun_az units in degrees)
+    Check if object az is >=90˚ from the sun. (az, sun_az units in degrees)
     '''
 
     # Find difference between sun, telescope az angles
@@ -222,7 +232,7 @@ def is_target_up_morn_twi(sunrise_dt, sunrise_az, obj_coord, site):
         kvis = keckII_pointing_limits(obj_az, obj_el) # returns True/False
         
         # Is it within twilight pointing constraints?
-        tvis = twilight_pointing_limits(obj_az, sunrise_az, az_sep=45.)
+        tvis = twilight_pointing_limits(obj_az, sunrise_az) # default az_sep=90.
         
         # At this sampled time, is it within both Keck & twilight constraints?
         sampled_visibility[j] = kvis and tvis
@@ -457,6 +467,62 @@ def make_azel_plot(sunset_UTC, sunset_az, sunrise_UTC, sunrise_az, obj_az, obj_e
 
 
 
+def get_sidereal_time(t, site):
+    '''
+    t :: datetime object
+    site :: EarthLocation object specifying observing site
+    
+    Returns: sidereal time (degrees) at specified time and location
+    '''
+    
+    tt = Time(t, scale='utc') # make given time into astropy.Time object
+    stime = tt.sidereal_time(kind='apparent', longitude=site)
+    
+    return stime.degree
+
+
+def write_starlist(df, tois=None, ra=None, diff=60., Hmag=False, filename='toi_list', savepath='~'):
+    '''
+    Write .txt starlist file with columns [TOI, RA, DEC].
+    tois     :: list of TOI numbers (floats). If not None, write only these targets to starlist.
+    ra       :: right ascension (deg). if not None, only write targets within +-XXX degrees of this ra
+    diff     :: [ra-diff, ra+diff] range to return if ra is not None
+    Hmag     :: if True, write .txt file with additional Hmag column
+    filename :: specify custom filename if you'd like
+    '''
+    
+    # If list of specific TOIs is given, limit to only these objects
+    if tois is not None:
+        df = df[df['TOI'].isin(tois)]
+    
+    
+    # Make new df with stripped-down columns
+    df_new = df[['TOI', 'RA', 'Dec']]
+    
+    
+    # Re-format TOI column: XXX.X > TOIXXX.X
+    new_TOI_col = ['TOI'+str(df_new['TOI'].values[i]) for i in range(len(df_new))]
+    df_new['TOI'] = new_TOI_col
+    
+    
+    # Add in Hmag if desired
+    if Hmag:
+        df_new['Hmag'] = df['Hmag'].values
+        
+        
+    # If specified, throw out targets outside given RA range
+    if ra is not None:
+    
+        target_ra = df['RA_deg'].values
+        angle_diff = np.abs(target_ra - ra) % 360.
+
+        ix = (angle_diff <= diff)
+        df_new = df_new[ix]
+        
+    # Write .txt file
+    np.savetxt(f'{savepath}/{filename}.txt', df_new.values, fmt='%s', delimiter=',')
+    
+    return df_new
 
 
 
